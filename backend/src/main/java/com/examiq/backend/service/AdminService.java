@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class AdminService {
@@ -204,6 +205,26 @@ public class AdminService {
 
     public List<User> getAllUsers() {
         return userRepository.findAll();
+    }
+
+    /** Real counts only - no fabricated demo numbers. */
+    public Map<String, Object> getDashboardStats() {
+        List<User> users = userRepository.findAll();
+        long students = users.stream()
+                .filter(u -> u.getRole() != null && "STUDENT".equalsIgnoreCase(u.getRole().getName())).count();
+        long faculty = users.stream()
+                .filter(u -> u.getRole() != null && "FACULTY".equalsIgnoreCase(u.getRole().getName())).count();
+        long approvedPapers = paperRepository.findAll().stream()
+                .filter(p -> "APPROVED".equalsIgnoreCase(p.getStatus())).count();
+        long pendingPapers = paperRepository.findAll().stream()
+                .filter(p -> "PENDING".equalsIgnoreCase(p.getStatus())).count();
+
+        return Map.of(
+                "totalUsers", users.size(),
+                "students", students,
+                "faculty", faculty,
+                "approvedPapers", approvedPapers,
+                "pendingPapers", pendingPapers);
     }
 
     private void logAdminAction(User admin, Paper paper, String actionType, String reason) {

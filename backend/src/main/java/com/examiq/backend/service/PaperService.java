@@ -41,6 +41,11 @@ import java.util.stream.Collectors;
 @Service
 public class PaperService {
 
+    private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
+            "application/pdf", "image/jpeg", "image/jpg", "image/png");
+    private static final Set<String> ALLOWED_EXTENSIONS = Set.of("pdf", "jpg", "jpeg", "png");
+    private static final long MAX_FILE_SIZE_BYTES = 20L * 1024 * 1024;
+
     private final PaperRepository paperRepository;
     private final SubjectRepository subjectRepository;
     private final UniversityRepository universityRepository;
@@ -107,6 +112,7 @@ public class PaperService {
         if (username == null || username.isBlank()) {
             throw new IllegalArgumentException("User not authenticated");
         }
+        validateUploadFile(file);
 
         String normalizedSubject = normalizeOptionalText(subjectName, "General");
         String normalizedUniversity = normalizeOptionalText(universityName, "Unknown University");
@@ -221,9 +227,10 @@ public class PaperService {
         String fileName = System.currentTimeMillis() + "_"
                 + Objects.requireNonNull(file.getOriginalFilename()).replaceAll("\\s+", "_");
         Path path = Paths.get(storagePath).toAbsolutePath().normalize();
+        Path target = null;
         try {
             Files.createDirectories(path);
-            Path target = path.resolve(fileName);
+            target = path.resolve(fileName);
             Files.copy(file.getInputStream(), target);
 
             // Calculate SHA-256 hash of the file
@@ -324,9 +331,26 @@ public class PaperService {
             dto.setWarnings(warnings);
             return dto;
         } catch (IOException e) {
+            deleteQuietly(target);
             throw new IllegalStateException("Unable to store paper file", e);
         } catch (NoSuchAlgorithmException e) {
+            deleteQuietly(target);
             throw new IllegalStateException("Unable to calculate file hash", e);
+        } catch (RuntimeException e) {
+            deleteQuietly(target);
+            throw e;
+        }
+    }
+
+    /** Best-effort cleanup so a failed upload never leaves an orphaned file with no database record. */
+    private void deleteQuietly(Path target) {
+        if (target == null) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(target);
+        } catch (IOException ignored) {
+            // Best effort only - do not mask the original failure.
         }
     }
 
@@ -523,6 +547,28 @@ public class PaperService {
         boolean selectedMatch = selectedTerms.stream().anyMatch(normalizedTitle::contains);
         boolean otherMatch = otherTerms.stream().anyMatch(normalizedTitle::contains);
         return otherMatch && !selectedMatch;
+    }
+
+    /**
+     * Server-side allowlist for uploaded resource files - the frontend's
+     * accept=".pdf,.jpg,.png" hint is not a security control on its own since
+     * it can be bypassed by calling the API directly.
+     */
+    private void validateUploadFile(MultipartFile file) {
+        if (file.getSize() > MAX_FILE_SIZE_BYTES) {
+            throw new IllegalArgumentException("File must be smaller than 20MB");
+        }
+        String contentType = file.getContentType();
+        if (contentType == null || !ALLOWED_CONTENT_TYPES.contains(contentType.toLowerCase(Locale.ROOT))) {
+            throw new IllegalArgumentException("Only PDF, JPG, or PNG files are allowed");
+        }
+        String originalName = file.getOriginalFilename();
+        String extension = originalName != null && originalName.contains(".")
+                ? originalName.substring(originalName.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT)
+                : "";
+        if (!ALLOWED_EXTENSIONS.contains(extension)) {
+            throw new IllegalArgumentException("Only .pdf, .jpg, .jpeg, or .png files are allowed");
+        }
     }
 
     private String normalizeOptionalText(String value, String defaultValue) {

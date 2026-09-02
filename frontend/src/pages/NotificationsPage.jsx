@@ -28,10 +28,11 @@ const resolveNotificationTarget = (notification) => {
   if (type === 'CONTRIBUTOR_ACHIEVEMENT') {
     return '/student/profile';
   }
-  if (type.startsWith('PAPER_') || type.includes('DUPLICATE') || type.includes('UPLOAD') || type.includes('SUBJECT')) {
+  if (type.startsWith('PAPER_') || type.includes('DUPLICATE') || type.includes('UPLOAD')
+      || type.includes('SUBJECT') || type === 'REUPLOAD_REQUESTED') {
     return '/student/uploads';
   }
-  if (type.startsWith('ACCOUNT_')) {
+  if (type.startsWith('ACCOUNT_') || type === 'FACULTY_VERIFIED') {
     return '/student/profile';
   }
   return null;
