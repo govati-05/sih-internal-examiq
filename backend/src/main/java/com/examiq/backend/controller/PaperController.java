@@ -70,13 +70,28 @@ public class PaperController {
         }
     }
 
+    @GetMapping("/subjects")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> listSubjects() {
+        List<Map<String, Object>> subjects = subjectRepository.findAll().stream()
+                .map(s -> {
+                    Map<String, Object> item = new java.util.HashMap<>();
+                    item.put("id", s.getId());
+                    item.put("name", s.getCanonicalName() != null ? s.getCanonicalName() : s.getName());
+                    return item;
+                })
+                .sorted((a, b) -> ((String) a.get("name")).compareToIgnoreCase((String) b.get("name")))
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success("Subjects loaded", subjects));
+    }
+
     @GetMapping("/papers/search")
     public ResponseEntity<ApiResponse<List<PaperDto>>> search(
             @RequestParam(value = "q", required = false) String query,
             @RequestParam(value = "year", required = false) Integer studentYear,
-            @RequestParam(value = "subject", required = false) String subject) {
+            @RequestParam(value = "subject", required = false) String subject,
+            @RequestParam(value = "sort", required = false) String sort) {
         return ResponseEntity.ok(ApiResponse.success("Search results loaded",
-                paperService.searchPapers(query, studentYear, subject)));
+                paperService.searchPapers(query, studentYear, subject, sort)));
     }
 
     @GetMapping("/papers/trending")

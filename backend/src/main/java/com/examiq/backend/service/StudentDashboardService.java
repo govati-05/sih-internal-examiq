@@ -22,6 +22,7 @@ public class StudentDashboardService {
     private final UniversityRepository universityRepository;
     private final ContributorScoreService contributorScoreService;
     private final RepeatedQuestionAnalysisService repeatedQuestionAnalysisService;
+    private final QuizService quizService;
 
     public StudentDashboardService(UserRepository userRepository,
             PaperRepository paperRepository,
@@ -31,7 +32,8 @@ public class StudentDashboardService {
             RatingRepository ratingRepository,
             UniversityRepository universityRepository,
             ContributorScoreService contributorScoreService,
-            RepeatedQuestionAnalysisService repeatedQuestionAnalysisService) {
+            RepeatedQuestionAnalysisService repeatedQuestionAnalysisService,
+            QuizService quizService) {
         this.userRepository = userRepository;
         this.paperRepository = paperRepository;
         this.bookmarkRepository = bookmarkRepository;
@@ -41,6 +43,7 @@ public class StudentDashboardService {
         this.universityRepository = universityRepository;
         this.contributorScoreService = contributorScoreService;
         this.repeatedQuestionAnalysisService = repeatedQuestionAnalysisService;
+        this.quizService = quizService;
     }
 
     public User getAuthenticatedUser(String username) {
@@ -162,6 +165,9 @@ public class StudentDashboardService {
                         .count());
         overview.put("branch", user.getBranch());
         overview.put("year", user.getYear());
+        Map<String, Object> quizStats = quizService.getQuizStats(user);
+        overview.put("quizAttemptsCount", quizStats.get("attemptsCount"));
+        overview.put("averageQuizScore", quizStats.get("averageScore"));
         return overview;
     }
 
@@ -186,22 +192,27 @@ public class StudentDashboardService {
 
     private Map<String, Object> contributorScoreSummary(User user) {
         var score = contributorScoreService.getOrCreateScore(user.getId());
+        List<Upload> uploads = uploadRepository.findByUploadedBy(user);
+        long approvedUploads = uploads.stream()
+                .filter(u -> u.getPaper() != null && "APPROVED".equalsIgnoreCase(u.getPaper().getStatus()))
+                .count();
+        double avgRatingReceived = uploads.stream()
+                .map(Upload::getPaper)
+                .filter(p -> p != null)
+                .distinct()
+                .mapToDouble(this::averageRating)
+                .filter(r -> r > 0)
+                .average()
+                .orElse(0.0);
+
         Map<String, Object> summary = new HashMap<>();
         summary.put("points", score.getScore());
         summary.put("tier", score.getTier());
-        summary.put("badge", badgeLabel(score.getTier()));
+        summary.put("badge", contributorScoreService.badgeLabel(score.getTier()));
+        summary.put("uploadedResourcesCount", uploads.size());
+        summary.put("approvedResourcesCount", approvedUploads);
+        summary.put("averageRatingReceived", Math.round(avgRatingReceived * 10.0) / 10.0);
         return summary;
-    }
-
-    private String badgeLabel(String tier) {
-        if (tier == null) {
-            return "Contributor";
-        }
-        return switch (tier) {
-            case "TOP_CONTRIBUTOR", "VERIFIED_FACULTY" -> "Top Contributor";
-            case "TRUSTED_CONTRIBUTOR" -> "Trusted Contributor";
-            default -> "Contributor";
-        };
     }
 
     public Map<String, Object> updateProfile(User user, Map<String, String> payload) {

@@ -260,9 +260,10 @@ export default function PaperDetailPage() {
               {repeatedQuestions.map((rq, idx) => (
                 <div key={idx} className="rounded-xl border border-slate-200 p-4">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="font-medium text-slate-900">{rq.questionText}</p>
+                    <p className="font-semibold text-slate-900">🔥 {rq.topicLabel || rq.questionText}</p>
                     <span className="shrink-0 rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700">{rq.tag}</span>
                   </div>
+                  <p className="mt-1 text-sm italic text-slate-500">"{rq.questionText}"</p>
                   <p className="mt-1 text-sm text-slate-500">{rq.recurrenceLabel}</p>
                 </div>
               ))}

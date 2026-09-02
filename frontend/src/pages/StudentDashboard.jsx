@@ -20,6 +20,7 @@ export default function StudentDashboard() {
   const [preparation, setPreparation] = useState(null);
   const [trending, setTrending] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -29,6 +30,7 @@ export default function StudentDashboard() {
     }
 
     const fetchDashboard = async () => {
+      setError('');
       try {
         const [dashboardRes, trendingRes] = await Promise.all([
           axios.get(`${API_BASE_URL}/student/dashboard`, { headers: { Authorization: `Bearer ${token}` } }),
@@ -44,8 +46,9 @@ export default function StudentDashboard() {
         if (trendingRes) {
           setTrending(trendingRes.data.data || []);
         }
-      } catch (error) {
-        console.error('Dashboard load error:', error);
+      } catch (err) {
+        console.error('Dashboard load error:', err);
+        setError(err.response?.data?.message || 'Unable to load your dashboard right now.');
       } finally {
         setLoading(false);
       }
@@ -87,6 +90,10 @@ export default function StudentDashboard() {
             <button className="btn-primary" onClick={() => navigate('/upload')}>Upload</button>
           </div>
         </header>
+
+        {error && (
+          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">⚠ {error}</div>
+        )}
 
         <div className="mb-8 grid gap-4 md:grid-cols-4">
           {quickStats.map((stat) => (
@@ -180,7 +187,7 @@ export default function StudentDashboard() {
             </div>
 
             <div className="card">
-              <h2 className="mb-4 text-xl font-semibold">Important topics</h2>
+              <h2 className="mb-4 text-xl font-semibold">🤖 Important topics</h2>
               {importantTopics.length === 0 ? (
                 <p className="text-sm text-slate-500">Bookmark or upload a few papers so we can surface high-recurrence topics.</p>
               ) : (
@@ -188,7 +195,7 @@ export default function StudentDashboard() {
                   {importantTopics.map((topic, idx) => (
                     <div key={idx} className="rounded-xl border border-slate-200 p-4">
                       <div className="flex items-center justify-between gap-3">
-                        <p className="font-medium text-slate-900">{topic.questionText}</p>
+                        <p className="font-semibold text-slate-900">🔥 {topic.topicLabel || topic.questionText}</p>
                         <span className="shrink-0 rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700">{topic.tag}</span>
                       </div>
                       <p className="mt-1 text-sm text-slate-500">{topic.subjectName} • {topic.recurrenceLabel}</p>
@@ -196,6 +203,14 @@ export default function StudentDashboard() {
                   ))}
                 </div>
               )}
+            </div>
+
+            <div className="card">
+              <h2 className="mb-2 text-xl font-semibold">📝 Practice</h2>
+              <p className="mb-4 text-sm text-slate-500">
+                Test yourself with a quick practice quiz built from real repeated exam questions.
+              </p>
+              <button className="btn-primary w-full" onClick={() => navigate('/quiz')}>Generate Practice Quiz</button>
             </div>
           </div>
 
@@ -215,7 +230,7 @@ export default function StudentDashboard() {
 
             {preparation && (
               <div className="card">
-                <h2 className="mb-4 text-xl font-semibold">Preparation overview</h2>
+                <h2 className="mb-4 text-xl font-semibold">📊 Preparation overview</h2>
                 <div className="grid grid-cols-2 gap-3 text-center">
                   <div className="rounded-lg bg-slate-50 p-3">
                     <p className="text-2xl font-bold text-slate-900">{preparation.bookmarksCount}</p>
@@ -224,6 +239,14 @@ export default function StudentDashboard() {
                   <div className="rounded-lg bg-slate-50 p-3">
                     <p className="text-2xl font-bold text-slate-900">{preparation.uploadsCount}</p>
                     <p className="text-xs text-slate-500">Uploaded</p>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <p className="text-2xl font-bold text-slate-900">{preparation.quizAttemptsCount ?? 0}</p>
+                    <p className="text-xs text-slate-500">Quiz attempts</p>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <p className="text-2xl font-bold text-slate-900">{preparation.averageQuizScore ? `${preparation.averageQuizScore}%` : '—'}</p>
+                    <p className="text-xs text-slate-500">Avg. quiz score</p>
                   </div>
                 </div>
               </div>

@@ -506,6 +506,35 @@ export default function ProfilePage() {
                   <p className="mt-2 text-lg font-semibold text-slate-900">{formatDate(profile?.createdAt)}</p>
                 </div>
               </div>
+
+              <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5 animate-card">
+                <p className="mb-3 text-sm font-semibold text-slate-600">Contributor activity</p>
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div>
+                    <p className="text-xl font-bold text-slate-900">{profile?.contributorScore?.uploadedResourcesCount ?? 0}</p>
+                    <p className="text-xs text-slate-500">Uploaded</p>
+                  </div>
+                  <div>
+                    <p className="text-xl font-bold text-slate-900">{profile?.contributorScore?.approvedResourcesCount ?? 0}</p>
+                    <p className="text-xs text-slate-500">Approved</p>
+                  </div>
+                  <div>
+                    <p className="text-xl font-bold text-slate-900">
+                      {profile?.contributorScore?.averageRatingReceived ? `★${profile.contributorScore.averageRatingReceived}` : '—'}
+                    </p>
+                    <p className="text-xs text-slate-500">Avg. rating</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5 animate-card">
+                <p className="mb-3 text-sm font-semibold text-slate-600">Quick links</p>
+                <div className="space-y-2">
+                  <button type="button" className="btn-secondary w-full text-sm" onClick={() => navigate('/student/uploads')}>My uploads</button>
+                  <button type="button" className="btn-secondary w-full text-sm" onClick={() => navigate('/access-requests')}>Access requests</button>
+                  <button type="button" className="btn-secondary w-full text-sm" onClick={() => navigate('/quiz')}>Practice quiz</button>
+                </div>
+              </div>
             </aside>
           </div>
         </div>

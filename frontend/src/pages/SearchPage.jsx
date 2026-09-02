@@ -19,20 +19,38 @@ const YEAR_OPTIONS = [
   { value: '4', label: '4th Year' }
 ];
 
+const SORT_OPTIONS = [
+  { value: '', label: 'Most relevant' },
+  { value: 'newest', label: 'Newest' },
+  { value: 'most_viewed', label: 'Most Viewed' },
+  { value: 'most_downloaded', label: 'Most Downloaded' },
+  { value: 'highest_rated', label: 'Highest Rated' },
+  { value: 'trending', label: 'Trending' }
+];
+
 export default function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [year, setYear] = useState('');
   const [subject, setSubject] = useState('');
+  const [sort, setSort] = useState('');
+  const [subjectOptions, setSubjectOptions] = useState([]);
   const [papers, setPapers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+
+  useEffect(() => {
+    axios.get(`${API_BASE_URL}/subjects`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
+      .then((res) => setSubjectOptions(res.data.data || []))
+      .catch(() => setSubjectOptions([]));
+  }, []);
 
   const runSearch = async (params) => {
     const trimmedQuery = (params.q || '').trim();
     const trimmedSubject = (params.subject || '').trim();
     const yearValue = params.year || '';
+    const sortValue = params.sort || '';
 
     if (!trimmedQuery && !trimmedSubject && !yearValue) {
       setPapers([]);
@@ -48,6 +66,7 @@ export default function SearchPage() {
       if (trimmedQuery) nextParams.q = trimmedQuery;
       if (yearValue) nextParams.year = yearValue;
       if (trimmedSubject) nextParams.subject = trimmedSubject;
+      if (sortValue) nextParams.sort = sortValue;
       setSearchParams(nextParams);
 
       const response = await axios.get(`${API_BASE_URL}/papers/search`, {
@@ -66,16 +85,18 @@ export default function SearchPage() {
     const urlQuery = searchParams.get('q') || '';
     const urlYear = searchParams.get('year') || '';
     const urlSubject = searchParams.get('subject') || '';
+    const urlSort = searchParams.get('sort') || '';
     if (urlQuery || urlYear || urlSubject) {
       setQuery(urlQuery);
       setYear(urlYear);
       setSubject(urlSubject);
-      runSearch({ q: urlQuery, year: urlYear, subject: urlSubject });
+      setSort(urlSort);
+      runSearch({ q: urlQuery, year: urlYear, subject: urlSubject, sort: urlSort });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSearch = () => runSearch({ q: query, year, subject });
+  const handleSearch = () => runSearch({ q: query, year, subject, sort });
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
@@ -106,7 +127,7 @@ export default function SearchPage() {
               onKeyDown={handleKeyPress}
             />
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-3">
               <div>
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Year</label>
                 <select
@@ -127,7 +148,25 @@ export default function SearchPage() {
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
                   onKeyDown={handleKeyPress}
+                  list="subject-options"
                 />
+                <datalist id="subject-options">
+                  {subjectOptions.map((s) => (
+                    <option key={s.id} value={s.name} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Sort by</label>
+                <select
+                  className="w-full rounded-lg border border-slate-300 px-4 py-2.5"
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value)}
+                >
+                  {SORT_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -139,6 +178,7 @@ export default function SearchPage() {
                 setQuery('');
                 setYear('');
                 setSubject('');
+                setSort('');
                 setPapers([]);
                 setHasSearched(false);
                 setSearchParams({});

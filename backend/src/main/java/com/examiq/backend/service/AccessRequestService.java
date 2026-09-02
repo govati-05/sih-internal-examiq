@@ -90,6 +90,9 @@ public class AccessRequestService {
         if (!isOwner && !isAdmin) {
             throw new IllegalArgumentException("You are not authorized to manage this request");
         }
+        if (request.getRequester() != null && request.getRequester().getId().equals(decidingUser.getId())) {
+            throw new IllegalArgumentException("You cannot approve or reject your own access request");
+        }
         if (!"PENDING".equalsIgnoreCase(request.getStatus())) {
             throw new IllegalArgumentException("This request has already been decided");
         }

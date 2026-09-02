@@ -19,13 +19,16 @@ public class RatingService {
     private final PaperRepository paperRepository;
     private final UserRepository userRepository;
     private final ContributorScoreService contributorScoreService;
+    private final NotificationService notificationService;
 
     public RatingService(RatingRepository ratingRepository, PaperRepository paperRepository,
-            UserRepository userRepository, ContributorScoreService contributorScoreService) {
+            UserRepository userRepository, ContributorScoreService contributorScoreService,
+            NotificationService notificationService) {
         this.ratingRepository = ratingRepository;
         this.paperRepository = paperRepository;
         this.userRepository = userRepository;
         this.contributorScoreService = contributorScoreService;
+        this.notificationService = notificationService;
     }
 
     @Transactional
@@ -55,9 +58,18 @@ public class RatingService {
         rating.setComment(comment);
         Rating saved = ratingRepository.save(rating);
 
-        // Reward the uploader for a genuinely positive, first-time rating on their resource.
-        if (score >= 4 && paper.getUploader() != null && !paper.getUploader().getId().equals(userId)) {
-            contributorScoreService.addPoints(paper.getUploader().getId(), 2);
+        if (paper.getUploader() != null && !paper.getUploader().getId().equals(userId)) {
+            // Reward the uploader for a genuinely positive, first-time rating on their resource.
+            if (score >= 4) {
+                contributorScoreService.addPoints(paper.getUploader().getId(), 2);
+            }
+            try {
+                notificationService.createNotification(paper.getUploader().getId(), "New Rating Received",
+                        user.getFullName() + " rated your paper '" + paper.getTitle() + "' " + score + "/5.",
+                        "NEW_RATING");
+            } catch (Exception e) {
+                System.err.println("Failed to create rating notification: " + e.getMessage());
+            }
         }
 
         return saved;

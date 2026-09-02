@@ -12,10 +12,21 @@ const homeRouteForRole = () => {
 };
 
 // Maps a notification's type/message to somewhere useful to land the user.
+// Notifications don't carry a specific resource id, so this routes to the
+// most relevant list page rather than a dead end.
 const resolveNotificationTarget = (notification) => {
   const type = (notification.type || '').toUpperCase();
+  if (type === 'ACCESS_REQUEST') {
+    return '/access-requests';
+  }
   if (type.startsWith('ACCESS_')) {
     return '/student/uploads';
+  }
+  if (type === 'NEW_RATING') {
+    return '/student/uploads';
+  }
+  if (type === 'CONTRIBUTOR_ACHIEVEMENT') {
+    return '/student/profile';
   }
   if (type.startsWith('PAPER_') || type.includes('DUPLICATE') || type.includes('UPLOAD') || type.includes('SUBJECT')) {
     return '/student/uploads';

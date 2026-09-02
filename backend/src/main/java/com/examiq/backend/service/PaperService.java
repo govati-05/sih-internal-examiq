@@ -163,6 +163,7 @@ public class PaperService {
 
         // Check subject relevance using AI service and auto-approve if relevant
         boolean aiApproved = false;
+        Double subjectMatchScore = null;
         try {
             String subjectCheckUrl = aiServiceUrl + "/ai/subject-check";
             java.util.Map<String, Object> request = new java.util.HashMap<>();
@@ -176,6 +177,7 @@ public class PaperService {
                 Double matchScore = data.get("match_score") instanceof Number
                         ? ((Number) data.get("match_score")).doubleValue()
                         : null;
+                subjectMatchScore = matchScore;
                 boolean obviousMismatch = isObviousSubjectMismatch(title, subject.getCanonicalName());
                 if (obviousMismatch) {
                     String rejectionMessage = "Paper does not appear to be relevant to the subject "
@@ -272,6 +274,11 @@ public class PaperService {
             }
 
             List<String> warnings = computeUploadWarnings(file, title, subject, university, year, examType);
+            if (!aiApproved && subjectMatchScore != null) {
+                warnings.add("Subject relevance to " + subject.getCanonicalName()
+                        + " is uncertain (AI match score " + Math.round(subjectMatchScore * 100) + "%)."
+                        + " This paper will be held for manual review before it appears in search.");
+            }
 
             Paper paper = new Paper();
             paper.setTitle(title);
@@ -324,16 +331,20 @@ public class PaperService {
     }
 
     public List<PaperDto> searchPapers(String query) {
-        return searchPapers(query, null, null);
+        return searchPapers(query, null, null, null);
     }
 
     public List<PaperDto> searchPapers(String query, Integer studentYear, String subjectName) {
+        return searchPapers(query, studentYear, subjectName, null);
+    }
+
+    public List<PaperDto> searchPapers(String query, Integer studentYear, String subjectName, String sort) {
         String q = query == null ? "" : query.trim();
         String needle = q.isEmpty() ? null : q.toLowerCase();
         String normalizedSubject = subjectName == null || subjectName.isBlank() ? null
                 : normalizeSubjectKey(subjectName);
 
-        return paperRepository.findAll().stream()
+        List<Paper> matches = paperRepository.findAll().stream()
                 .filter(paper -> "APPROVED".equalsIgnoreCase(paper.getStatus()))
                 .filter(paper -> paper.getFileUrl() != null && !paper.getFileUrl().isBlank())
                 .filter(paper -> uploadRepository.existsByPaper(paper))
@@ -342,8 +353,30 @@ public class PaperService {
                 .filter(paper -> normalizedSubject == null
                         || (paper.getSubject() != null
                                 && normalizeSubjectKey(paper.getSubject().getCanonicalName()).equals(normalizedSubject)))
-                .map(this::toDto)
                 .collect(Collectors.toList());
+
+        applySort(matches, sort);
+
+        return matches.stream().map(this::toDto).collect(Collectors.toList());
+    }
+
+    private void applySort(List<Paper> papers, String sort) {
+        if (sort == null || sort.isBlank()) {
+            return;
+        }
+        switch (sort.trim().toLowerCase(Locale.ROOT)) {
+            case "newest" -> papers.sort((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()));
+            case "most_viewed" -> papers.sort((a, b) -> Long.compare(
+                    b.getViewCount() == null ? 0 : b.getViewCount(), a.getViewCount() == null ? 0 : a.getViewCount()));
+            case "most_downloaded" -> papers.sort((a, b) -> Long.compare(
+                    b.getDownloadCount() == null ? 0 : b.getDownloadCount(),
+                    a.getDownloadCount() == null ? 0 : a.getDownloadCount()));
+            case "highest_rated" -> papers.sort((a, b) -> Double.compare(getAverageRating(b), getAverageRating(a)));
+            case "trending" -> papers.sort((a, b) -> Double.compare(trendingScore(b), trendingScore(a)));
+            default -> {
+                // Unknown sort value: leave default relevance/creation order untouched.
+            }
+        }
     }
 
     public List<PaperDto> getAllApprovedPapers() {

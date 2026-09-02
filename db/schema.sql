@@ -214,6 +214,22 @@ CREATE TABLE IF NOT EXISTS access_requests (
   CONSTRAINT fk_access_requests_decided_by FOREIGN KEY (decided_by) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS quiz_attempts (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  subject_id BIGINT NOT NULL,
+  student_year INT,
+  status VARCHAR(30) DEFAULT 'PENDING',
+  total_questions INT,
+  correct_count INT,
+  score_percentage DOUBLE,
+  questions_json LONGTEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  completed_at TIMESTAMP NULL,
+  CONSTRAINT fk_quiz_attempts_user FOREIGN KEY (user_id) REFERENCES users(id),
+  CONSTRAINT fk_quiz_attempts_subject FOREIGN KEY (subject_id) REFERENCES subjects(id)
+);
+
 INSERT INTO roles (name) VALUES ('STUDENT'), ('FACULTY'), ('ADMIN')
 ON DUPLICATE KEY UPDATE name=name;
 

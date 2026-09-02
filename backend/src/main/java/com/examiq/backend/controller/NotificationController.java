@@ -42,7 +42,8 @@ public class NotificationController {
     @PutMapping("/notifications/{notificationId}/read")
     @PreAuthorize("hasRole('STUDENT') or hasRole('FACULTY') or hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Void>> markAsRead(@PathVariable Long notificationId) {
-        notificationService.markAsRead(notificationId);
+        Long userId = authenticatedUserResolver.getCurrentUser().getId();
+        notificationService.markAsRead(notificationId, userId);
         return ResponseEntity.ok(ApiResponse.success("Notification marked as read", null));
     }
 

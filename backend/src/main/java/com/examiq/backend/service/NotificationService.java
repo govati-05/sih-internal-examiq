@@ -49,9 +49,12 @@ public class NotificationService {
     }
 
     @Transactional
-    public void markAsRead(Long notificationId) {
+    public void markAsRead(Long notificationId, Long requestingUserId) {
         Notification notification = notificationRepository.findById(notificationId)
                 .orElseThrow(() -> new IllegalArgumentException("Notification not found"));
+        if (notification.getUser() == null || !notification.getUser().getId().equals(requestingUserId)) {
+            throw new IllegalArgumentException("You are not authorized to modify this notification");
+        }
         notification.setIsRead(true);
         notificationRepository.save(notification);
     }
