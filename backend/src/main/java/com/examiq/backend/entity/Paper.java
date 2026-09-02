@@ -36,6 +36,18 @@ public class Paper {
     @Column(name = "paper_year")
     private Integer year;
 
+    @Column(name = "student_year")
+    private Integer studentYear;
+
+    @Column(name = "access_type", length = 30)
+    private String accessType = "PUBLIC";
+
+    @Column(name = "view_count")
+    private Long viewCount = 0L;
+
+    @Column(name = "download_count")
+    private Long downloadCount = 0L;
+
     @Column(name = "exam_type")
     private String examType;
 

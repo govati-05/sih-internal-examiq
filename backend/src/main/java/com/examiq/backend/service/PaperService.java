@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -50,6 +51,7 @@ public class PaperService {
     private final SubjectAliasRepository subjectAliasRepository;
     private final VerificationLogRepository verificationLogRepository;
     private final UploadVerificationService uploadVerificationService;
+    private final QuestionExtractionService questionExtractionService;
 
     @Value("${app.storage.path:./storage}")
     private String storagePath;
@@ -69,6 +71,7 @@ public class PaperService {
             SubjectAliasRepository subjectAliasRepository,
             VerificationLogRepository verificationLogRepository,
             UploadVerificationService uploadVerificationService,
+            QuestionExtractionService questionExtractionService,
             RestTemplate restTemplate) {
         this.paperRepository = paperRepository;
         this.subjectRepository = subjectRepository;
@@ -80,6 +83,7 @@ public class PaperService {
         this.subjectAliasRepository = subjectAliasRepository;
         this.verificationLogRepository = verificationLogRepository;
         this.uploadVerificationService = uploadVerificationService;
+        this.questionExtractionService = questionExtractionService;
         this.restTemplate = restTemplate;
     }
 
@@ -91,7 +95,9 @@ public class PaperService {
             Integer year,
             String examType,
             String author,
-            String username) {
+            String username,
+            Integer studentYear,
+            String accessType) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("A paper file is required");
         }
@@ -242,6 +248,8 @@ public class PaperService {
                 paper.setUniversity(university);
                 paper.setUploader(uploader);
                 paper.setYear(year);
+                paper.setStudentYear(studentYear);
+                paper.setAccessType(normalizeAccessType(accessType));
                 paper.setExamType(examType);
                 paper.setAuthor(author != null ? author : uploader.getFullName());
                 paper.setStatus("REJECTED");
@@ -263,14 +271,19 @@ public class PaperService {
                 return toDto(savedPaper);
             }
 
+            List<String> warnings = computeUploadWarnings(file, title, subject, university, year, examType);
+
             Paper paper = new Paper();
             paper.setTitle(title);
             paper.setSubject(subject);
             paper.setUniversity(university);
             paper.setUploader(uploader);
             paper.setYear(year);
+            paper.setStudentYear(studentYear);
+            paper.setAccessType(normalizeAccessType(accessType));
             paper.setExamType(examType);
             paper.setAuthor(author != null ? author : uploader.getFullName());
+            paper.setQualityScore(warnings.stream().anyMatch(w -> w.startsWith("Poor scan")) ? 0.4 : 0.9);
 
             // Set status based on duplicate check and AI approval
             if (isDuplicate) {
@@ -296,7 +309,13 @@ public class PaperService {
             upload.setUploadStatus(isDuplicate ? "REJECTED" : "COMPLETED");
             uploadRepository.save(upload);
 
-            return toDto(savedPaper);
+            if ("APPROVED".equals(savedPaper.getStatus())) {
+                questionExtractionService.extractAndStoreQuestions(savedPaper);
+            }
+
+            PaperDto dto = toDto(savedPaper);
+            dto.setWarnings(warnings);
+            return dto;
         } catch (IOException e) {
             throw new IllegalStateException("Unable to store paper file", e);
         } catch (NoSuchAlgorithmException e) {
@@ -305,24 +324,24 @@ public class PaperService {
     }
 
     public List<PaperDto> searchPapers(String query) {
+        return searchPapers(query, null, null);
+    }
+
+    public List<PaperDto> searchPapers(String query, Integer studentYear, String subjectName) {
         String q = query == null ? "" : query.trim();
-        List<Paper> papers = paperRepository.findAll();
+        String needle = q.isEmpty() ? null : q.toLowerCase();
+        String normalizedSubject = subjectName == null || subjectName.isBlank() ? null
+                : normalizeSubjectKey(subjectName);
 
-        if (q.isEmpty()) {
-            return papers.stream()
-                    .filter(paper -> "APPROVED".equalsIgnoreCase(paper.getStatus()))
-                    .filter(paper -> paper.getFileUrl() != null && !paper.getFileUrl().isBlank())
-                    .filter(paper -> uploadRepository.existsByPaper(paper))
-                    .map(this::toDto)
-                    .collect(Collectors.toList());
-        }
-
-        String needle = q.toLowerCase();
-        return papers.stream()
+        return paperRepository.findAll().stream()
                 .filter(paper -> "APPROVED".equalsIgnoreCase(paper.getStatus()))
                 .filter(paper -> paper.getFileUrl() != null && !paper.getFileUrl().isBlank())
                 .filter(paper -> uploadRepository.existsByPaper(paper))
-                .filter(paper -> matchesSearch(paper, needle))
+                .filter(paper -> needle == null || matchesSearch(paper, needle))
+                .filter(paper -> studentYear == null || studentYear.equals(paper.getStudentYear()))
+                .filter(paper -> normalizedSubject == null
+                        || (paper.getSubject() != null
+                                && normalizeSubjectKey(paper.getSubject().getCanonicalName()).equals(normalizedSubject)))
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
@@ -341,12 +360,38 @@ public class PaperService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Real-activity trending score: downloads weigh more than views, and rating
+     * gives a modest boost. No fabricated numbers - purely derived from stored
+     * counters and ratings.
+     */
+    public List<PaperDto> getTrendingPapers(int limit) {
+        return paperRepository.findAll().stream()
+                .filter(paper -> "APPROVED".equalsIgnoreCase(paper.getStatus()))
+                .filter(paper -> paper.getFileUrl() != null && !paper.getFileUrl().isBlank())
+                .filter(paper -> uploadRepository.existsByPaper(paper))
+                .sorted((a, b) -> Double.compare(trendingScore(b), trendingScore(a)))
+                .limit(limit)
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
+
+    private double trendingScore(Paper paper) {
+        long views = paper.getViewCount() == null ? 0 : paper.getViewCount();
+        long downloads = paper.getDownloadCount() == null ? 0 : paper.getDownloadCount();
+        double rating = getAverageRating(paper);
+        return views * 1.0 + downloads * 3.0 + rating * 5.0;
+    }
+
+    @Transactional
     public PaperDto getPaperById(Long id) {
         Paper paper = paperRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Paper not found"));
         if (paper.getFileUrl() == null || paper.getFileUrl().isBlank() || !uploadRepository.existsByPaper(paper)) {
             throw new IllegalArgumentException("Paper file is not available");
         }
+        paper.setViewCount((paper.getViewCount() == null ? 0L : paper.getViewCount()) + 1);
+        paperRepository.save(paper);
         return toDto(paper);
     }
 
@@ -360,12 +405,21 @@ public class PaperService {
 
     private Paper createRejectedPaperRecord(MultipartFile file, String title, Subject subject, University university,
             User uploader, Integer year, String examType, String author, String fileHash) {
+        return createRejectedPaperRecord(file, title, subject, university, uploader, year, examType, author,
+                fileHash, null, "PUBLIC");
+    }
+
+    private Paper createRejectedPaperRecord(MultipartFile file, String title, Subject subject, University university,
+            User uploader, Integer year, String examType, String author, String fileHash, Integer studentYear,
+            String accessType) {
         Paper paper = new Paper();
         paper.setTitle(title);
         paper.setSubject(subject);
         paper.setUniversity(university);
         paper.setUploader(uploader);
         paper.setYear(year);
+        paper.setStudentYear(studentYear);
+        paper.setAccessType(normalizeAccessType(accessType));
         paper.setExamType(examType);
         paper.setAuthor(author != null ? author : uploader.getFullName());
         paper.setStatus("REJECTED");
@@ -440,6 +494,70 @@ public class PaperService {
 
     private String normalizeOptionalText(String value, String defaultValue) {
         return (value == null || value.isBlank()) ? defaultValue : value.trim();
+    }
+
+    private String normalizeAccessType(String accessType) {
+        return "REQUEST_ACCESS".equalsIgnoreCase(accessType) ? "REQUEST_ACCESS" : "PUBLIC";
+    }
+
+    /**
+     * Non-blocking smart-upload checks: near-duplicate title detection within the
+     * same subject/university, and a lightweight scan-quality heuristic based on
+     * file size. These surface warnings to the uploader without rejecting the
+     * upload outright.
+     */
+    private List<String> computeUploadWarnings(MultipartFile file, String title, Subject subject,
+            University university, Integer year, String examType) {
+        List<String> warnings = new ArrayList<>();
+
+        Set<String> titleTokens = tokenize(title);
+        if (!titleTokens.isEmpty()) {
+            List<Paper> candidates = paperRepository.findAll().stream()
+                    .filter(p -> p.getSubject() != null && subject != null
+                            && p.getSubject().getId().equals(subject.getId()))
+                    .filter(p -> !"REJECTED".equalsIgnoreCase(p.getStatus()))
+                    .toList();
+
+            double bestSimilarity = 0;
+            for (Paper candidate : candidates) {
+                Set<String> candidateTokens = tokenize(candidate.getTitle());
+                if (candidateTokens.isEmpty()) {
+                    continue;
+                }
+                Set<String> intersection = new java.util.HashSet<>(titleTokens);
+                intersection.retainAll(candidateTokens);
+                Set<String> union = new java.util.HashSet<>(titleTokens);
+                union.addAll(candidateTokens);
+                double similarity = union.isEmpty() ? 0 : (double) intersection.size() / union.size();
+                bestSimilarity = Math.max(bestSimilarity, similarity);
+            }
+
+            if (bestSimilarity >= 0.6) {
+                int percent = (int) Math.round(bestSimilarity * 100);
+                warnings.add("Possible duplicate detected: " + percent
+                        + "% similar to an existing resource in this subject.");
+            }
+        }
+
+        if (file.getSize() < 40_000) {
+            warnings.add("Poor scan quality or insufficient content detected: the file is very small ("
+                    + (file.getSize() / 1024) + " KB). Please confirm the document is complete and legible.");
+        }
+
+        return warnings;
+    }
+
+    private Set<String> tokenize(String text) {
+        if (text == null || text.isBlank()) {
+            return Set.of();
+        }
+        Set<String> tokens = new java.util.HashSet<>();
+        for (String word : text.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9\\s]", " ").split("\\s+")) {
+            if (word.length() > 2) {
+                tokens.add(word);
+            }
+        }
+        return tokens;
     }
 
     private Subject resolveSubject(String subjectName) {
@@ -558,14 +676,21 @@ public class PaperService {
         PaperDto dto = new PaperDto();
         dto.setId(paper.getId());
         dto.setTitle(paper.getTitle());
+        dto.setSubjectId(paper.getSubject() != null ? paper.getSubject().getId() : null);
         dto.setSubjectName(paper.getSubject() != null ? paper.getSubject().getCanonicalName() : "Unknown");
         dto.setUniversityName(paper.getUniversity() != null ? paper.getUniversity().getName() : "Unknown");
         dto.setYear(paper.getYear());
+        dto.setStudentYear(paper.getStudentYear());
         dto.setExamType(paper.getExamType());
         dto.setAuthor(paper.getAuthor());
         dto.setStatus(paper.getStatus());
         dto.setFileUrl(paper.getFileUrl());
         dto.setAverageRating(getAverageRating(paper));
+        dto.setAccessType(paper.getAccessType() != null ? paper.getAccessType() : "PUBLIC");
+        dto.setViewCount(paper.getViewCount() == null ? 0L : paper.getViewCount());
+        dto.setDownloadCount(paper.getDownloadCount() == null ? 0L : paper.getDownloadCount());
+        dto.setUploaderId(paper.getUploader() != null ? paper.getUploader().getId() : null);
+        dto.setUploaderName(paper.getUploader() != null ? paper.getUploader().getFullName() : null);
         return dto;
     }
 

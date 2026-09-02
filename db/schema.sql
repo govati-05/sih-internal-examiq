@@ -21,6 +21,11 @@ CREATE TABLE IF NOT EXISTS users (
   role_id BIGINT NOT NULL,
   university_id BIGINT,
   status VARCHAR(30) DEFAULT 'ACTIVE',
+  profile_picture_url VARCHAR(500),
+  branch VARCHAR(150),
+  academic_year INT,
+  section VARCHAR(30),
+  bio TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_users_role FOREIGN KEY (role_id) REFERENCES roles(id),
@@ -48,6 +53,10 @@ CREATE TABLE IF NOT EXISTS papers (
   university_id BIGINT NOT NULL,
   uploader_id BIGINT NOT NULL,
   paper_year INT,
+  student_year INT,
+  access_type VARCHAR(30) DEFAULT 'PUBLIC',
+  view_count BIGINT DEFAULT 0,
+  download_count BIGINT DEFAULT 0,
   exam_type VARCHAR(80),
   author VARCHAR(150),
   status VARCHAR(30) DEFAULT 'PENDING',
@@ -188,6 +197,21 @@ CREATE TABLE IF NOT EXISTS faculty_verification (
   CONSTRAINT fk_faculty_verif_user FOREIGN KEY (faculty_id) REFERENCES users(id),
   CONSTRAINT fk_faculty_verif_university FOREIGN KEY (university_id) REFERENCES universities(id),
   CONSTRAINT fk_faculty_verif_reviewer FOREIGN KEY (reviewed_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS access_requests (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  paper_id BIGINT NOT NULL,
+  requester_id BIGINT NOT NULL,
+  permission_level VARCHAR(30) DEFAULT 'VIEW',
+  message VARCHAR(500),
+  status VARCHAR(30) DEFAULT 'PENDING',
+  decided_by BIGINT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_access_requests_paper FOREIGN KEY (paper_id) REFERENCES papers(id),
+  CONSTRAINT fk_access_requests_requester FOREIGN KEY (requester_id) REFERENCES users(id),
+  CONSTRAINT fk_access_requests_decided_by FOREIGN KEY (decided_by) REFERENCES users(id)
 );
 
 INSERT INTO roles (name) VALUES ('STUDENT'), ('FACULTY'), ('ADMIN')

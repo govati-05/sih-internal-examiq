@@ -15,15 +15,18 @@ public class AdminService {
     private final AdminActionRepository adminActionRepository;
     private final NotificationService notificationService;
     private final ContributorScoreService contributorScoreService;
+    private final QuestionExtractionService questionExtractionService;
 
     public AdminService(PaperRepository paperRepository, UserRepository userRepository,
                       AdminActionRepository adminActionRepository, NotificationService notificationService,
-                      ContributorScoreService contributorScoreService) {
+                      ContributorScoreService contributorScoreService,
+                      QuestionExtractionService questionExtractionService) {
         this.paperRepository = paperRepository;
         this.userRepository = userRepository;
         this.adminActionRepository = adminActionRepository;
         this.notificationService = notificationService;
         this.contributorScoreService = contributorScoreService;
+        this.questionExtractionService = questionExtractionService;
     }
 
     @Transactional
@@ -50,6 +53,8 @@ public class AdminService {
 
         // Award points to contributor
         contributorScoreService.addPoints(paper.getUploader().getId(), 5);
+
+        questionExtractionService.extractAndStoreQuestions(savedPaper);
 
         return savedPaper;
     }

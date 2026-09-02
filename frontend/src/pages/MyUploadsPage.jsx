@@ -36,7 +36,10 @@ export default function MyUploadsPage() {
       <div className="mx-auto max-w-5xl card">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-3xl font-bold">My uploads</h1>
-          <button className="btn-secondary" onClick={() => navigate('/student')}>Back</button>
+          <div className="flex gap-2">
+            <button className="btn-secondary" onClick={() => navigate('/access-requests')}>Access requests</button>
+            <button className="btn-secondary" onClick={() => navigate('/student')}>Back</button>
+          </div>
         </div>
 
         {uploads.length === 0 ? (
@@ -48,7 +51,10 @@ export default function MyUploadsPage() {
                 <div>
                   <h3 className="font-semibold text-slate-900">{upload.paperTitle}</h3>
                   <p className="text-sm text-slate-500">{upload.fileName}</p>
-                  <p className="text-sm text-slate-500">Status: {upload.status}</p>
+                  <p className="text-sm text-slate-500">
+                    Status: {upload.status}
+                    {upload.accessType === 'REQUEST_ACCESS' && ' • 🔒 Access Required'}
+                  </p>
                 </div>
                 {upload.paperId && (
                   <button className="btn-primary" onClick={() => navigate(`/paper/${upload.paperId}`)}>View</button>

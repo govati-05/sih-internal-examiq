@@ -11,6 +11,7 @@ import ProfilePage from './pages/ProfilePage';
 import BookmarksPage from './pages/BookmarksPage';
 import MyUploadsPage from './pages/MyUploadsPage';
 import NotificationsPage from './pages/NotificationsPage';
+import AccessRequestsPage from './pages/AccessRequestsPage';
 
 function App() {
   return (
@@ -28,6 +29,7 @@ function App() {
       <Route path="/search" element={<SearchPage />} />
       <Route path="/upload" element={<UploadPage />} />
       <Route path="/paper/:id" element={<PaperDetailPage />} />
+      <Route path="/access-requests" element={<AccessRequestsPage />} />
     </Routes>
   );
 }

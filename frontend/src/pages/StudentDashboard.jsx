@@ -15,6 +15,10 @@ export default function StudentDashboard() {
   });
   const [recentPapers, setRecentPapers] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [recommended, setRecommended] = useState([]);
+  const [importantTopics, setImportantTopics] = useState([]);
+  const [preparation, setPreparation] = useState(null);
+  const [trending, setTrending] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -26,13 +30,20 @@ export default function StudentDashboard() {
 
     const fetchDashboard = async () => {
       try {
-        const response = await axios.get(`${API_BASE_URL}/student/dashboard`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const payload = response.data.data || {};
+        const [dashboardRes, trendingRes] = await Promise.all([
+          axios.get(`${API_BASE_URL}/student/dashboard`, { headers: { Authorization: `Bearer ${token}` } }),
+          axios.get(`${API_BASE_URL}/papers/trending`, { params: { limit: 5 } }).catch(() => null)
+        ]);
+        const payload = dashboardRes.data.data || {};
         setStats(payload.stats || stats);
         setRecentPapers(payload.recentPapers || []);
         setNotifications(payload.notifications || []);
+        setRecommended(payload.recommendedResources || []);
+        setImportantTopics(payload.importantTopics || []);
+        setPreparation(payload.preparationOverview || null);
+        if (trendingRes) {
+          setTrending(trendingRes.data.data || []);
+        }
       } catch (error) {
         console.error('Dashboard load error:', error);
       } finally {
@@ -105,7 +116,7 @@ export default function StudentDashboard() {
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 space-y-6">
             <div className="card">
               <h2 className="mb-4 text-xl font-semibold">Recently uploaded papers</h2>
               {loading ? (
@@ -129,6 +140,63 @@ export default function StudentDashboard() {
                 </div>
               )}
             </div>
+
+            <div className="card">
+              <h2 className="mb-4 text-xl font-semibold">🔥 Trending resources</h2>
+              {trending.length === 0 ? (
+                <p className="text-sm text-slate-500">No activity yet — trending resources will appear here as students view and download papers.</p>
+              ) : (
+                <div className="space-y-3">
+                  {trending.map((paper) => (
+                    <div key={paper.id} className="flex items-center justify-between rounded-xl border border-slate-200 p-4">
+                      <div>
+                        <h3 className="font-semibold text-slate-900">{paper.title}</h3>
+                        <p className="text-sm text-slate-500">{paper.subjectName} • {paper.viewCount ?? 0} views • {paper.downloadCount ?? 0} downloads</p>
+                      </div>
+                      <button className="text-sm font-medium text-blue-600" onClick={() => handlePaperView(paper)}>View</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="card">
+              <h2 className="mb-4 text-xl font-semibold">Recommended for you</h2>
+              {recommended.length === 0 ? (
+                <p className="text-sm text-slate-500">Complete your profile (branch/year) for more relevant recommendations.</p>
+              ) : (
+                <div className="space-y-3">
+                  {recommended.map((paper) => (
+                    <div key={paper.id} className="flex items-center justify-between rounded-xl border border-slate-200 p-4">
+                      <div>
+                        <h3 className="font-semibold text-slate-900">{paper.title}</h3>
+                        <p className="text-sm text-slate-500">{paper.subjectName} • {paper.universityName}</p>
+                      </div>
+                      <button className="text-sm font-medium text-blue-600" onClick={() => handlePaperView(paper)}>View</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="card">
+              <h2 className="mb-4 text-xl font-semibold">Important topics</h2>
+              {importantTopics.length === 0 ? (
+                <p className="text-sm text-slate-500">Bookmark or upload a few papers so we can surface high-recurrence topics.</p>
+              ) : (
+                <div className="space-y-3">
+                  {importantTopics.map((topic, idx) => (
+                    <div key={idx} className="rounded-xl border border-slate-200 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-medium text-slate-900">{topic.questionText}</p>
+                        <span className="shrink-0 rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700">{topic.tag}</span>
+                      </div>
+                      <p className="mt-1 text-sm text-slate-500">{topic.subjectName} • {topic.recurrenceLabel}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="space-y-6">
@@ -144,6 +212,23 @@ export default function StudentDashboard() {
                 </ul>
               )}
             </div>
+
+            {preparation && (
+              <div className="card">
+                <h2 className="mb-4 text-xl font-semibold">Preparation overview</h2>
+                <div className="grid grid-cols-2 gap-3 text-center">
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <p className="text-2xl font-bold text-slate-900">{preparation.bookmarksCount}</p>
+                    <p className="text-xs text-slate-500">Bookmarked</p>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <p className="text-2xl font-bold text-slate-900">{preparation.uploadsCount}</p>
+                    <p className="text-xs text-slate-500">Uploaded</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="card">
               <h2 className="mb-4 text-xl font-semibold">Quick actions</h2>
               <div className="space-y-3">
@@ -151,6 +236,7 @@ export default function StudentDashboard() {
                 <button className="btn-secondary w-full" onClick={() => navigate('/student/bookmarks')}>Bookmarks</button>
                 <button className="btn-secondary w-full" onClick={() => navigate('/student/profile')}>Profile</button>
                 <button className="btn-secondary w-full" onClick={() => navigate('/student/notifications')}>Notifications</button>
+                <button className="btn-secondary w-full" onClick={() => navigate('/access-requests')}>Access requests</button>
               </div>
             </div>
           </div>

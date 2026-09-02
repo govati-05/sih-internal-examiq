@@ -18,11 +18,14 @@ public class RatingService {
     private final RatingRepository ratingRepository;
     private final PaperRepository paperRepository;
     private final UserRepository userRepository;
+    private final ContributorScoreService contributorScoreService;
 
-    public RatingService(RatingRepository ratingRepository, PaperRepository paperRepository, UserRepository userRepository) {
+    public RatingService(RatingRepository ratingRepository, PaperRepository paperRepository,
+            UserRepository userRepository, ContributorScoreService contributorScoreService) {
         this.ratingRepository = ratingRepository;
         this.paperRepository = paperRepository;
         this.userRepository = userRepository;
+        this.contributorScoreService = contributorScoreService;
     }
 
     @Transactional
@@ -50,7 +53,14 @@ public class RatingService {
         rating.setUser(user);
         rating.setScore(score);
         rating.setComment(comment);
-        return ratingRepository.save(rating);
+        Rating saved = ratingRepository.save(rating);
+
+        // Reward the uploader for a genuinely positive, first-time rating on their resource.
+        if (score >= 4 && paper.getUploader() != null && !paper.getUploader().getId().equals(userId)) {
+            contributorScoreService.addPoints(paper.getUploader().getId(), 2);
+        }
+
+        return saved;
     }
 
     public Double getAverageRating(Long paperId) {

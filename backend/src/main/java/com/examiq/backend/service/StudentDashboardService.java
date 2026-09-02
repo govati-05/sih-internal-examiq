@@ -20,6 +20,8 @@ public class StudentDashboardService {
     private final UploadRepository uploadRepository;
     private final RatingRepository ratingRepository;
     private final UniversityRepository universityRepository;
+    private final ContributorScoreService contributorScoreService;
+    private final RepeatedQuestionAnalysisService repeatedQuestionAnalysisService;
 
     public StudentDashboardService(UserRepository userRepository,
             PaperRepository paperRepository,
@@ -27,7 +29,9 @@ public class StudentDashboardService {
             NotificationRepository notificationRepository,
             UploadRepository uploadRepository,
             RatingRepository ratingRepository,
-            UniversityRepository universityRepository) {
+            UniversityRepository universityRepository,
+            ContributorScoreService contributorScoreService,
+            RepeatedQuestionAnalysisService repeatedQuestionAnalysisService) {
         this.userRepository = userRepository;
         this.paperRepository = paperRepository;
         this.bookmarkRepository = bookmarkRepository;
@@ -35,6 +39,8 @@ public class StudentDashboardService {
         this.uploadRepository = uploadRepository;
         this.ratingRepository = ratingRepository;
         this.universityRepository = universityRepository;
+        this.contributorScoreService = contributorScoreService;
+        this.repeatedQuestionAnalysisService = repeatedQuestionAnalysisService;
     }
 
     public User getAuthenticatedUser(String username) {
@@ -76,7 +82,87 @@ public class StudentDashboardService {
                 (int) notifications.stream().filter(n -> !Boolean.TRUE.equals(n.getIsRead())).count(),
                 "topRatedValue", topRating == 0.0 ? 0.0 : Math.round(topRating * 10.0) / 10.0));
         payload.put("quickActions", List.of("Search", "Upload", "Bookmarks"));
+        payload.put("recommendedResources", getRecommendedResources(user));
+        payload.put("importantTopics", getImportantTopics(user));
+        payload.put("preparationOverview", getPreparationOverview(user, bookmarks));
         return payload;
+    }
+
+    /**
+     * Resources relevant to the student's own branch/year, drawn only from real
+     * approved uploads - falls back to recent papers when there isn't a
+     * branch/year match yet.
+     */
+    private List<Map<String, Object>> getRecommendedResources(User user) {
+        List<Paper> approved = paperRepository.findAll().stream()
+                .filter(p -> "APPROVED".equalsIgnoreCase(p.getStatus()))
+                .filter(p -> p.getFileUrl() != null && !p.getFileUrl().isBlank())
+                .filter(p -> uploadRepository.existsByPaper(p))
+                .toList();
+
+        List<Paper> matched = user.getYear() == null ? List.of()
+                : approved.stream().filter(p -> user.getYear().equals(p.getStudentYear())).toList();
+
+        List<Paper> source = matched.isEmpty() ? approved : matched;
+        return source.stream()
+                .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
+                .limit(6)
+                .map(this::toPaperMap)
+                .toList();
+    }
+
+    /**
+     * High-recurrence topics pulled from the repeated-question analysis across
+     * subjects the student has actually engaged with (bookmarks/uploads); falls
+     * back to the subjects with the most approved papers otherwise.
+     */
+    private List<Map<String, Object>> getImportantTopics(User user) {
+        List<Subject> subjectsOfInterest = new ArrayList<>();
+        bookmarkRepository.findByUserOrderByCreatedAtDesc(user).forEach(b -> {
+            if (b.getPaper() != null && b.getPaper().getSubject() != null
+                    && !subjectsOfInterest.contains(b.getPaper().getSubject())) {
+                subjectsOfInterest.add(b.getPaper().getSubject());
+            }
+        });
+        uploadRepository.findByUploadedBy(user).forEach(u -> {
+            if (u.getPaper() != null && u.getPaper().getSubject() != null
+                    && !subjectsOfInterest.contains(u.getPaper().getSubject())) {
+                subjectsOfInterest.add(u.getPaper().getSubject());
+            }
+        });
+
+        if (subjectsOfInterest.isEmpty()) {
+            paperRepository.findAll().stream()
+                    .filter(p -> "APPROVED".equalsIgnoreCase(p.getStatus()) && p.getSubject() != null)
+                    .map(Paper::getSubject)
+                    .distinct()
+                    .limit(3)
+                    .forEach(subjectsOfInterest::add);
+        }
+
+        List<Map<String, Object>> topics = new ArrayList<>();
+        for (Subject subject : subjectsOfInterest) {
+            List<Map<String, Object>> repeated = repeatedQuestionAnalysisService.getRepeatedQuestions(subject, 3);
+            for (Map<String, Object> item : repeated) {
+                Map<String, Object> withSubject = new HashMap<>(item);
+                withSubject.put("subjectName", subject.getCanonicalName());
+                topics.add(withSubject);
+            }
+        }
+        return topics.stream().limit(8).toList();
+    }
+
+    private Map<String, Object> getPreparationOverview(User user, List<Bookmark> bookmarks) {
+        List<Upload> uploads = uploadRepository.findByUploadedBy(user);
+        Map<String, Object> overview = new HashMap<>();
+        overview.put("bookmarksCount", bookmarks.size());
+        overview.put("uploadsCount", uploads.size());
+        overview.put("approvedUploadsCount",
+                uploads.stream().filter(u -> u.getPaper() != null && "APPROVED".equalsIgnoreCase(u.getPaper().getStatus()))
+                        .count());
+        overview.put("branch", user.getBranch());
+        overview.put("year", user.getYear());
+        return overview;
     }
 
     public Map<String, Object> getProfile(User user) {
@@ -89,7 +175,33 @@ public class StudentDashboardService {
         profile.put("university", user.getUniversity() != null ? user.getUniversity().getName() : null);
         profile.put("status", user.getStatus());
         profile.put("createdAt", user.getCreatedAt());
+        profile.put("profilePictureUrl", user.getProfilePictureUrl());
+        profile.put("branch", user.getBranch());
+        profile.put("year", user.getYear());
+        profile.put("section", user.getSection());
+        profile.put("bio", user.getBio());
+        profile.put("contributorScore", contributorScoreSummary(user));
         return profile;
+    }
+
+    private Map<String, Object> contributorScoreSummary(User user) {
+        var score = contributorScoreService.getOrCreateScore(user.getId());
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("points", score.getScore());
+        summary.put("tier", score.getTier());
+        summary.put("badge", badgeLabel(score.getTier()));
+        return summary;
+    }
+
+    private String badgeLabel(String tier) {
+        if (tier == null) {
+            return "Contributor";
+        }
+        return switch (tier) {
+            case "TOP_CONTRIBUTOR", "VERIFIED_FACULTY" -> "Top Contributor";
+            case "TRUSTED_CONTRIBUTOR" -> "Trusted Contributor";
+            default -> "Contributor";
+        };
     }
 
     public Map<String, Object> updateProfile(User user, Map<String, String> payload) {
@@ -114,8 +226,37 @@ public class StudentDashboardService {
                     });
             user.setUniversity(university);
         }
+        if (payload.containsKey("branch")) {
+            user.setBranch(blankToNull(payload.get("branch")));
+        }
+        if (payload.containsKey("section")) {
+            user.setSection(blankToNull(payload.get("section")));
+        }
+        if (payload.containsKey("bio")) {
+            user.setBio(blankToNull(payload.get("bio")));
+        }
+        if (payload.containsKey("year")) {
+            String yearValue = payload.get("year");
+            if (yearValue == null || yearValue.isBlank()) {
+                user.setYear(null);
+            } else {
+                try {
+                    int parsed = Integer.parseInt(yearValue.trim());
+                    if (parsed < 1 || parsed > 4) {
+                        throw new IllegalArgumentException("Year must be between 1 and 4");
+                    }
+                    user.setYear(parsed);
+                } catch (NumberFormatException e) {
+                    throw new IllegalArgumentException("Year must be a valid number");
+                }
+            }
+        }
         userRepository.save(user);
         return getProfile(user);
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     public List<Map<String, Object>> getBookmarks(User user) {
@@ -171,6 +312,8 @@ public class StudentDashboardService {
             item.put("status", upload.getUploadStatus());
             item.put("fileName", upload.getOriginalFileName());
             item.put("createdAt", upload.getCreatedAt());
+            item.put("accessType", upload.getPaper() != null && upload.getPaper().getAccessType() != null
+                    ? upload.getPaper().getAccessType() : "PUBLIC");
             result.add(item);
         }
         return result;
@@ -227,13 +370,16 @@ public class StudentDashboardService {
         }
         item.put("id", paper.getId());
         item.put("title", paper.getTitle());
+        item.put("subjectId", paper.getSubject() != null ? paper.getSubject().getId() : null);
         item.put("subjectName", paper.getSubject() != null ? paper.getSubject().getCanonicalName() : "Unknown");
         item.put("universityName", paper.getUniversity() != null ? paper.getUniversity().getName() : "Unknown");
         item.put("year", paper.getYear());
+        item.put("studentYear", paper.getStudentYear());
         item.put("examType", paper.getExamType());
         item.put("author", paper.getAuthor());
         item.put("status", paper.getStatus());
         item.put("fileUrl", paper.getFileUrl());
+        item.put("accessType", paper.getAccessType() != null ? paper.getAccessType() : "PUBLIC");
         item.put("averageRating", averageRating(paper));
         return item;
     }
