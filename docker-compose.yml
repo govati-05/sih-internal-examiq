@@ -1,0 +1,66 @@
+version: '3.9'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: examiq-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-examiq}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - ./mysql-data:/var/lib/mysql
+      - ./db:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 20s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: examiq-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      ai-service:
+        condition: service_started
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-jdbc:mysql://mysql:3306/examiq}
+      DATABASE_USERNAME: ${DATABASE_USERNAME:-root}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-root}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in your .env file before starting the stack}
+      AI_SERVICE_URL: ${AI_SERVICE_URL:-http://ai-service:8001}
+      FILE_STORAGE_PATH: ${FILE_STORAGE_PATH:-/app/uploads}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      - ./storage:/app/uploads
+
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: examiq-ai
+    restart: unless-stopped
+    environment:
+      PORT: ${AI_SERVICE_PORT:-8001}
+    ports:
+      - "${AI_SERVICE_PORT:-8001}:8001"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: examiq-frontend
+    depends_on:
+      - backend
+    environment:
+      VITE_API_BASE_URL: http://backend:8080
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"

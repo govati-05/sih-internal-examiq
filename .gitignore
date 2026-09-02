@@ -1,0 +1,42 @@
+# OS & editor
+.DS_Store
+.vscode/
+.idea/
+*.iml
+
+# Java / Maven
+backend/target/
+**/target/
+*.class
+*.log
+
+# Node / React
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.vite/
+
+# Python
+ai-service/.venv/
+ai-service/__pycache__/
+ai-service/.pytest_cache/
+**/.venv/
+**/__pycache__/
+
+# Local env
+.env
+.env.*
+!/.env.example
+
+# Upload storage
+storage/
+uploads/
+
+# MySQL data
+mysql-data/
+
+# Temporary / generated files
+backend/out.txt
+backend/storage-test/
+netstat
+query

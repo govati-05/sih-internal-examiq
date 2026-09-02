@@ -1,0 +1,14 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.8.2
+python-multipart==0.0.9
+pypdf==4.3.1
+opencv-python-headless==4.10.0.84
+pytesseract==0.3.13
+numpy==2.1.2
+scikit-learn==1.5.2
+sentence-transformers==3.2.1
+faiss-cpu==1.9.0.post1
+transformers==4.45.2
+torch==2.5.1
+python-dotenv==1.0.1
