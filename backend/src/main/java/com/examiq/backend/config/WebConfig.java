@@ -13,8 +13,12 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        String location = "file:" + java.nio.file.Paths.get(storagePath).toAbsolutePath().normalize().toString() + "/";
-        registry.addResourceHandler("/files/**")
-                .addResourceLocations(location);
+        // Resource files (papers/notes) are intentionally NOT exposed as static
+        // files: access is permission-gated and served through
+        // FileAccessController (/api/papers/{id}/file) instead.
+        String avatarLocation = "file:"
+                + java.nio.file.Paths.get(storagePath).toAbsolutePath().normalize().toString() + "/avatars/";
+        registry.addResourceHandler("/avatars/**")
+                .addResourceLocations(avatarLocation);
     }
 }

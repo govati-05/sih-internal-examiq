@@ -41,9 +41,16 @@ public class ReportService {
         return reportRepository.save(report);
     }
 
-    public List<Report> getPaperReports(Long paperId) {
+    public List<Report> getPaperReports(Long paperId, User requestingUser) {
         Paper paper = paperRepository.findById(paperId)
                 .orElseThrow(() -> new IllegalArgumentException("Paper not found"));
+        boolean isOwner = paper.getUploader() != null
+                && paper.getUploader().getId().equals(requestingUser.getId());
+        boolean isAdmin = requestingUser.getRole() != null
+                && "ADMIN".equalsIgnoreCase(requestingUser.getRole().getName());
+        if (!isOwner && !isAdmin) {
+            throw new IllegalArgumentException("You are not authorized to view reports for this resource");
+        }
         return reportRepository.findByPaperOrderByCreatedAtDesc(paper);
     }
 

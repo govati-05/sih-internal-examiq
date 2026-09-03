@@ -1,5 +1,6 @@
 package com.examiq.backend.exception;
 
+import com.examiq.backend.controller.FileAccessController;
 import com.examiq.backend.dto.ApiResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,6 +41,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleAuthentication(AuthenticationException e) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(ApiResponse.error("Invalid username or password"));
+    }
+
+    @ExceptionHandler(FileAccessController.AccessDeniedForResourceException.class)
+    public ResponseEntity<ApiResponse<Void>> handleResourceAccessDenied(
+            FileAccessController.AccessDeniedForResourceException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponse.error(e.getMessage()));
     }
 
     @ExceptionHandler(AccessDeniedException.class)

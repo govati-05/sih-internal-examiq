@@ -41,8 +41,9 @@ public class ReportController {
     }
 
     @GetMapping("/papers/{paperId}/reports")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<List<Report>>> getPaperReports(@PathVariable Long paperId) {
-        List<Report> reports = reportService.getPaperReports(paperId);
+        List<Report> reports = reportService.getPaperReports(paperId, authenticatedUserResolver.getCurrentUser());
         return ResponseEntity.ok(ApiResponse.success("Paper reports retrieved successfully", reports));
     }
 

@@ -41,6 +41,21 @@ public class User {
     @Column(length = 30)
     private String status = "ACTIVE";
 
+    @Column(name = "profile_picture_url")
+    private String profilePictureUrl;
+
+    @Column(length = 150)
+    private String branch;
+
+    @Column(name = "academic_year")
+    private Integer year;
+
+    @Column(length = 30)
+    private String section;
+
+    @Column(columnDefinition = "TEXT")
+    private String bio;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 

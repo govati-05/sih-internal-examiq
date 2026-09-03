@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class AdminService {
@@ -15,15 +16,18 @@ public class AdminService {
     private final AdminActionRepository adminActionRepository;
     private final NotificationService notificationService;
     private final ContributorScoreService contributorScoreService;
+    private final QuestionExtractionService questionExtractionService;
 
     public AdminService(PaperRepository paperRepository, UserRepository userRepository,
                       AdminActionRepository adminActionRepository, NotificationService notificationService,
-                      ContributorScoreService contributorScoreService) {
+                      ContributorScoreService contributorScoreService,
+                      QuestionExtractionService questionExtractionService) {
         this.paperRepository = paperRepository;
         this.userRepository = userRepository;
         this.adminActionRepository = adminActionRepository;
         this.notificationService = notificationService;
         this.contributorScoreService = contributorScoreService;
+        this.questionExtractionService = questionExtractionService;
     }
 
     @Transactional
@@ -50,6 +54,8 @@ public class AdminService {
 
         // Award points to contributor
         contributorScoreService.addPoints(paper.getUploader().getId(), 5);
+
+        questionExtractionService.extractAndStoreQuestions(savedPaper);
 
         return savedPaper;
     }
@@ -199,6 +205,26 @@ public class AdminService {
 
     public List<User> getAllUsers() {
         return userRepository.findAll();
+    }
+
+    /** Real counts only - no fabricated demo numbers. */
+    public Map<String, Object> getDashboardStats() {
+        List<User> users = userRepository.findAll();
+        long students = users.stream()
+                .filter(u -> u.getRole() != null && "STUDENT".equalsIgnoreCase(u.getRole().getName())).count();
+        long faculty = users.stream()
+                .filter(u -> u.getRole() != null && "FACULTY".equalsIgnoreCase(u.getRole().getName())).count();
+        long approvedPapers = paperRepository.findAll().stream()
+                .filter(p -> "APPROVED".equalsIgnoreCase(p.getStatus())).count();
+        long pendingPapers = paperRepository.findAll().stream()
+                .filter(p -> "PENDING".equalsIgnoreCase(p.getStatus())).count();
+
+        return Map.of(
+                "totalUsers", users.size(),
+                "students", students,
+                "faculty", faculty,
+                "approvedPapers", approvedPapers,
+                "pendingPapers", pendingPapers);
     }
 
     private void logAdminAction(User admin, Paper paper, String actionType, String reason) {

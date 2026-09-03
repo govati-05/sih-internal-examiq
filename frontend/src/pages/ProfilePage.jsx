@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 const API_BASE_URL = 'http://localhost:8080/api';
+const SERVER_ORIGIN = 'http://localhost:8080';
 
 const getInitials = (value) => {
   if (!value || typeof value !== 'string') return 'S';
@@ -28,18 +30,31 @@ const getProfileCompletion = (profile) => {
     profile.fullName,
     profile.email,
     profile.university,
-    profile.role
+    profile.role,
+    profile.branch,
+    profile.year,
+    profile.profilePictureUrl
   ];
 
   const completed = checks.filter((value) => typeof value === 'string' ? value.trim() : value).length;
   return Math.min(100, Math.round((completed / checks.length) * 100));
 };
 
+const homeRouteForRole = () => {
+  const role = localStorage.getItem('role');
+  if (role === 'FACULTY') return '/faculty';
+  if (role === 'ADMIN') return '/admin';
+  return '/student';
+};
+
 export default function ProfilePage() {
+  const navigate = useNavigate();
+  const fileInputRef = useRef(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saveState, setSaveState] = useState({ loading: false, success: false, error: false });
+  const [pictureState, setPictureState] = useState({ loading: false, error: '' });
 
   const fetchProfile = async () => {
     setLoading(true);
@@ -81,7 +96,11 @@ export default function ProfilePage() {
         {
           fullName: profile.fullName,
           email: profile.email,
-          university: profile.university || ''
+          university: profile.university || '',
+          branch: profile.branch || '',
+          year: profile.year != null ? String(profile.year) : '',
+          section: profile.section || '',
+          bio: profile.bio || ''
         },
         {
           headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
@@ -98,8 +117,56 @@ export default function ProfilePage() {
     }
   };
 
+  const handlePictureSelect = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      setPictureState({ loading: false, error: 'Only JPG, PNG, or WEBP images are allowed.' });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setPictureState({ loading: false, error: 'Profile picture must be smaller than 5MB.' });
+      return;
+    }
+
+    setPictureState({ loading: true, error: '' });
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await axios.post(`${API_BASE_URL}/profile/picture`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const { profilePictureUrl } = response.data.data || {};
+      setProfile((prev) => ({ ...prev, profilePictureUrl }));
+      setPictureState({ loading: false, error: '' });
+    } catch (err) {
+      setPictureState({ loading: false, error: err.response?.data?.message || 'Unable to upload picture.' });
+    }
+  };
+
+  const handleRemovePicture = async () => {
+    setPictureState({ loading: true, error: '' });
+    try {
+      await axios.delete(`${API_BASE_URL}/profile/picture`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      setProfile((prev) => ({ ...prev, profilePictureUrl: null }));
+      setPictureState({ loading: false, error: '' });
+    } catch (err) {
+      setPictureState({ loading: false, error: err.response?.data?.message || 'Unable to remove picture.' });
+    }
+  };
+
   const completion = getProfileCompletion(profile);
   const badgeText = (profile?.status || 'ACTIVE').toUpperCase();
+  const avatarUrl = profile?.profilePictureUrl ? `${SERVER_ORIGIN}${profile.profilePictureUrl}` : null;
 
   if (loading) {
     return (
@@ -141,13 +208,22 @@ export default function ProfilePage() {
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-50 text-2xl text-red-500">!</div>
             <h1 className="text-2xl font-bold text-slate-900">Unable to load your profile</h1>
             <p className="mt-3 text-sm text-slate-600">{error}</p>
-            <button
-              type="button"
-              onClick={fetchProfile}
-              className="mt-6 inline-flex items-center justify-center rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-200 transition hover:-translate-y-0.5 hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-200"
-            >
-              Try Again
-            </button>
+            <div className="mt-6 flex justify-center gap-3">
+              <button
+                type="button"
+                onClick={fetchProfile}
+                className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-200 transition hover:-translate-y-0.5 hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-200"
+              >
+                Try Again
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate(homeRouteForRole())}
+                className="btn-secondary"
+              >
+                Home
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -157,13 +233,22 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-slate-100 px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl animate-fade-up">
+        <div className="mb-4 flex items-center justify-between">
+          <button type="button" className="btn-secondary" onClick={() => navigate(-1)}>← Back</button>
+          <button type="button" className="btn-secondary" onClick={() => navigate(homeRouteForRole())}>Home</button>
+        </div>
+
         <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_25px_80px_rgba(15,23,42,0.08)] sm:p-8 lg:p-10">
           <header className="mb-8 flex flex-col gap-6 rounded-[24px] bg-gradient-to-r from-slate-50 via-blue-50 to-indigo-50 p-5 sm:p-6 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-4">
-              <div className="profile-avatar-wrap">
-                <div className="profile-avatar" aria-label="Profile avatar">
-                  {getInitials(profile?.fullName || profile?.username || 'Student')}
-                </div>
+              <div className="profile-avatar-wrap relative">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="Profile avatar" className="profile-avatar object-cover" style={{ padding: 0 }} />
+                ) : (
+                  <div className="profile-avatar" aria-label="Profile avatar">
+                    {getInitials(profile?.fullName || profile?.username || 'Student')}
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -177,7 +262,42 @@ export default function ProfilePage() {
                     <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
                     {badgeText === 'ACTIVE' ? 'Active' : badgeText}
                   </span>
+                  {profile?.contributorScore?.badge && (
+                    <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-700">
+                      🏅 {profile.contributorScore.badge} ({profile.contributorScore.points} pts)
+                    </span>
+                  )}
                 </div>
+
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={handlePictureSelect}
+                  />
+                  <button
+                    type="button"
+                    className="btn-secondary text-xs"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={pictureState.loading}
+                  >
+                    {avatarUrl ? 'Replace photo' : 'Upload photo'}
+                  </button>
+                  {avatarUrl && (
+                    <button
+                      type="button"
+                      className="btn-secondary text-xs"
+                      onClick={handleRemovePicture}
+                      disabled={pictureState.loading}
+                    >
+                      Remove photo
+                    </button>
+                  )}
+                  {pictureState.loading && <span className="text-xs text-slate-500">Saving…</span>}
+                </div>
+                {pictureState.error && <p className="text-xs text-red-600">{pictureState.error}</p>}
               </div>
             </div>
 
@@ -262,6 +382,62 @@ export default function ProfilePage() {
                       placeholder="Enter your university"
                     />
                   </div>
+
+                  <div className="field-group">
+                    <label htmlFor="branch" className="field-label">Branch / Department</label>
+                    <input
+                      id="branch"
+                      name="branch"
+                      type="text"
+                      value={profile?.branch || ''}
+                      onChange={handleChange}
+                      className="field-input"
+                      placeholder="e.g., Computer Science"
+                    />
+                  </div>
+
+                  <div className="field-group">
+                    <label htmlFor="year" className="field-label">Year</label>
+                    <select
+                      id="year"
+                      name="year"
+                      value={profile?.year || ''}
+                      onChange={handleChange}
+                      className="field-input"
+                    >
+                      <option value="">Select year</option>
+                      <option value="1">1st Year</option>
+                      <option value="2">2nd Year</option>
+                      <option value="3">3rd Year</option>
+                      <option value="4">4th Year</option>
+                    </select>
+                  </div>
+
+                  <div className="field-group">
+                    <label htmlFor="section" className="field-label">Section</label>
+                    <input
+                      id="section"
+                      name="section"
+                      type="text"
+                      value={profile?.section || ''}
+                      onChange={handleChange}
+                      className="field-input"
+                      placeholder="e.g., A"
+                    />
+                  </div>
+
+                  <div className="field-group md:col-span-2">
+                    <label htmlFor="bio" className="field-label">Bio</label>
+                    <textarea
+                      id="bio"
+                      name="bio"
+                      rows={3}
+                      value={profile?.bio || ''}
+                      onChange={handleChange}
+                      className="field-input"
+                      placeholder="Tell others a bit about yourself"
+                    />
+                  </div>
                 </div>
 
                 {error && !saveState.success && !saveState.loading && (
@@ -319,13 +495,44 @@ export default function ProfilePage() {
                 </div>
 
                 <div className="info-card animate-card delay-200">
-                  <p className="info-label">Role</p>
-                  <p className="mt-2 text-lg font-semibold text-slate-900">{profile?.role || 'STUDENT'}</p>
+                  <p className="info-label">Contributor Score</p>
+                  <p className="mt-2 text-lg font-semibold text-slate-900">
+                    {profile?.contributorScore?.points ?? 0} pts · {profile?.contributorScore?.badge || 'Contributor'}
+                  </p>
                 </div>
 
                 <div className="info-card animate-card delay-300">
                   <p className="info-label">Member Since</p>
                   <p className="mt-2 text-lg font-semibold text-slate-900">{formatDate(profile?.createdAt)}</p>
+                </div>
+              </div>
+
+              <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5 animate-card">
+                <p className="mb-3 text-sm font-semibold text-slate-600">Contributor activity</p>
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div>
+                    <p className="text-xl font-bold text-slate-900">{profile?.contributorScore?.uploadedResourcesCount ?? 0}</p>
+                    <p className="text-xs text-slate-500">Uploaded</p>
+                  </div>
+                  <div>
+                    <p className="text-xl font-bold text-slate-900">{profile?.contributorScore?.approvedResourcesCount ?? 0}</p>
+                    <p className="text-xs text-slate-500">Approved</p>
+                  </div>
+                  <div>
+                    <p className="text-xl font-bold text-slate-900">
+                      {profile?.contributorScore?.averageRatingReceived ? `★${profile.contributorScore.averageRatingReceived}` : '—'}
+                    </p>
+                    <p className="text-xs text-slate-500">Avg. rating</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5 animate-card">
+                <p className="mb-3 text-sm font-semibold text-slate-600">Quick links</p>
+                <div className="space-y-2">
+                  <button type="button" className="btn-secondary w-full text-sm" onClick={() => navigate('/student/uploads')}>My uploads</button>
+                  <button type="button" className="btn-secondary w-full text-sm" onClick={() => navigate('/access-requests')}>Access requests</button>
+                  <button type="button" className="btn-secondary w-full text-sm" onClick={() => navigate('/quiz')}>Practice quiz</button>
                 </div>
               </div>
             </aside>

@@ -122,6 +122,24 @@ public class FacultyService {
                 return paperRepository.findByUploaderOrderByCreatedAtDesc(faculty);
         }
 
+        /** Real counts only - no fabricated demo numbers. */
+        public Map<String, Object> getFacultyDashboardStats(Long facultyId) {
+                User faculty = userRepository.findById(facultyId)
+                                .orElseThrow(() -> new IllegalArgumentException("Faculty not found"));
+                List<Paper> uploads = getFacultyUploads(facultyId);
+                long downloads = uploads.stream()
+                                .mapToLong(p -> p.getDownloadCount() == null ? 0L : p.getDownloadCount())
+                                .sum();
+                String verificationStatus = facultyVerificationRepository.findByFaculty(faculty)
+                                .map(FacultyVerification::getVerificationStatus)
+                                .orElse("NOT_SUBMITTED");
+
+                return Map.of(
+                                "papersUploaded", uploads.size(),
+                                "downloads", downloads,
+                                "verification", verificationStatus);
+        }
+
         public List<FacultyVerification> getPendingVerifications() {
                 return facultyVerificationRepository.findByVerificationStatus("PENDING");
         }

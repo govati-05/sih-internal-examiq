@@ -27,10 +27,9 @@ public class FacultyController {
     @GetMapping("/faculty/dashboard")
     @PreAuthorize("hasRole('FACULTY')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> dashboard() {
-        return ResponseEntity.ok(ApiResponse.success("Faculty dashboard loaded", Map.of(
-                "papersUploaded", 18,
-                "downloads", 2800,
-                "verification", "APPROVED")));
+        Long facultyId = authenticatedUserResolver.getCurrentUser().getId();
+        return ResponseEntity.ok(ApiResponse.success("Faculty dashboard loaded",
+                facultyService.getFacultyDashboardStats(facultyId)));
     }
 
     @PostMapping("/faculty/verification")

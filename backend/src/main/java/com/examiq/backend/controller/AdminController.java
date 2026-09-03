@@ -27,11 +27,7 @@ public class AdminController {
     @GetMapping("/admin/dashboard")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> dashboard() {
-        return ResponseEntity.ok(ApiResponse.success("Admin dashboard loaded", Map.of(
-                "totalUsers", 1248,
-                "students", 1104,
-                "faculty", 122,
-                "approvedPapers", 845)));
+        return ResponseEntity.ok(ApiResponse.success("Admin dashboard loaded", adminService.getDashboardStats()));
     }
 
     @PutMapping("/admin/papers/{paperId}/approve")
